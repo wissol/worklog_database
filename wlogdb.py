@@ -12,3 +12,14 @@ by Miguel de Luis
 
 """
 
+from peewee import *
+
+db =SqliteDatabase("worklog.db")
+
+def main():
+    pass
+
+if __name__ == '__main__':
+    main()
+else:
+    pass
