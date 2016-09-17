@@ -22,6 +22,7 @@ from peewee import *
 from blessings import Terminal
 
 DATE_FORMAT = "%d/%m/%Y"
+STANDARD_FIELD_LENGTH = 255
 
 db = SqliteDatabase("work_log.db")
 
@@ -29,11 +30,13 @@ term = Terminal()
 
 
 class Task(Model):
-    task_1_user_name = CharField(max_length=255)
-    task_0_name = CharField(max_length=255)
+    task_00_project = CharField(max_length=STANDARD_FIELD_LENGTH, default="In Box")
+    task_1_user_name = CharField(max_length=STANDARD_FIELD_LENGTH)
+    task_0_name = CharField(max_length=STANDARD_FIELD_LENGTH)
     task_3_duration = IntegerField(help_text="Time spent on the task, in minutes")
     task_2_date = DateField(default=date.today)  # research Date Formats
     task_4_notes = TextField()
+
     
     class Meta:
         database = db
@@ -75,17 +78,17 @@ def barbican(prompt, is_time=False, validation_message = ""):
             else:
                 return barbican(prompt, is_time=True, validation_message="Enter time in minutes or as ours:minutes")
     else:
-        return x[0:255]
+        return x[0:STANDARD_FIELD_LENGTH]  # Avoids adding a Field size larger than the Standard Field Length
 
 
 def input_task_data():
-    ugly_prompts = ["Your name:\t", "Your task name:\t", 'Time spent on the task:\t', "Notes, ctrl+d to finish."]
+    ugly_prompts = ["Your name:\t", "Your task name:\t",
+                    'Time spent on the task:\t', "Notes, ctrl+d to finish.",
+                    "Project:"]
 
-    def give_format(x):
-        return term.bold(x)
+    pretty_prompts = list(map((lambda x: term.bold(x)), ugly_prompts))
 
-    pretty_prompts = list(map(give_format, ugly_prompts))
-
+    project = barbican(pretty_prompts[4])
     name_of_user = barbican(pretty_prompts[0])
     name_of_task = barbican(pretty_prompts[1])
     duration_of_task = barbican(pretty_prompts[2], is_time=True)
@@ -93,16 +96,16 @@ def input_task_data():
     print(pretty_prompts[3])
     notes = stdin.read()
 
-    return name_of_user, name_of_task, duration_of_task, notes
+    return project, name_of_user, name_of_task, duration_of_task, notes
 
 
 def add_task():
     """
 
     """
-    name_of_user, name_of_task, duration_of_task, notes = input_task_data()
+    project, name_of_user, name_of_task, duration_of_task, notes = input_task_data()
 
-    Task.create(task_1_user_name=name_of_user, task_0_name=name_of_task,
+    Task.create(task_00_project=project, task_1_user_name=name_of_user, task_0_name=name_of_task,
                 task_3_duration=duration_of_task, task_4_notes=notes)
 
 
@@ -117,7 +120,8 @@ def view_entries(tasks,
 
     :return:
     """
-    fields = set(["task_0_name", "task_1_user_name", "task_2_date", "task_4_notes", "task_3_duration"])
+    fields = set(["task_00_project", "task_0_name", "task_1_user_name",
+                  "task_2_date", "task_4_notes", "task_3_duration"])
     fields_to_show = sorted(list(fields - fields_to_hide))
 
     number_of_tasks = len(tasks)
@@ -150,8 +154,9 @@ def view_entries(tasks,
             return input_choice(message="Valid choices: p,n,x")
 
     def edit_task(ti):
-        name_of_user, name_of_task, duration_of_task, notes = input_task_data()
+        project, name_of_user, name_of_task, duration_of_task, notes = input_task_data()
 
+        tasks[ti].task_00_project = project
         tasks[ti].task_1_user_name = name_of_user
         tasks[ti].task_0_name = name_of_task
         tasks[ti].task_3_duration = duration_of_task
@@ -190,7 +195,8 @@ def view_entries(tasks,
             return show_menu(ti)
 
     def show_task(task, total_tasks, task_number):
-        print_tags = dict(task_0_name="Description", task_1_user_name="User", task_2_date="Date:",
+        print_tags = dict(task_00_project="Project", task_0_name="Description",
+                          task_1_user_name="User", task_2_date="Date",
                           task_3_duration="Minutes spent on task", task_4_notes="Notes:\n")
 
         print(term.clear)
@@ -202,7 +208,7 @@ def view_entries(tasks,
             if fts == "task_2_date":
                 field = field.strftime(DATE_FORMAT)
             if field:
-                print("{} : {}".format(term.bold(print_tags[fts]), field))
+                print("{}: {}".format(term.bold(print_tags[fts]), field))
         print()
 
     show_menu()
@@ -295,15 +301,34 @@ def find_by_search_term():
         print("No task meets the search term \"{}\"".format(search_term))
 
 
+def search_by_project():
+    project_to_search = input("Project to search for:").strip()
+
+    tasks = Task.select().where(
+        Task.task_00_project == project_to_search
+    )
+    if tasks:
+        view_entries(tasks,
+                     title="Tasks that belong to \"{}\"".format(project_to_search))
+    else:
+        print("No task in the project: \"{}\"".format(project_to_search))
+
+
 def search_entries():
 
-    search_menu = {"e":search_entries_by_employee, "f":find_by_search_term, "d":search_entries_by_date}
+    search_menu = OrderedDict([
+        ("e", [search_entries_by_employee, "search entries by employee"]),
+        ("f", [find_by_search_term, "find by search term"]),
+        ("d", [search_entries_by_date, "find by date"]),
+        ("p", [search_by_project, "find by project"])
+    ])
 
     print(term.clear)
-    print("Enter e to find by employee, f to find a search term, d to find by date")
+    for key, value in search_menu.items():
+        print("{} {} {} {}".format(term.bold, key, term.normal, value[1].title()))
     choice = input().strip().lower()
     if choice in search_menu.keys():
-        search_menu[choice]()
+        search_menu[choice][0]()
     else:
         return search_entries()  # let's make a generic menu function instead
 
@@ -321,7 +346,7 @@ def view_all_entries():
     else:
         print("No tasks to show")
 
-menu = OrderedDict([
+main_menu = OrderedDict([
     ('a', [add_task, "add task"]),
     ('v', [view_all_entries, "view entries"]),
     ('s', [search_entries, "search entries"]),
@@ -330,7 +355,7 @@ menu = OrderedDict([
 ])
 
 
-def menu_loop():
+def menu_loop(menu):
     print(term.clear)
     while True:
         for key, value in menu.items():
@@ -345,7 +370,7 @@ def menu_loop():
 def main():
     initialize()
 
-    menu_loop()
+    menu_loop(main_menu)
 
 
 if __name__ == '__main__':
