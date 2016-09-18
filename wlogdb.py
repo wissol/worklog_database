@@ -42,71 +42,123 @@ class Task(Model):
         database = db
 
 
-def barbican(prompt, is_time=False, validation_message = ""):
+def show_validation(x):
+    if x:
+        print(x)
+
+
+def get_task_date(prompt, validation_message=""):
     """
-    Barbican, being the gatehouse of a castle
+    Ask user for task date, validates,
+    :return: string ... dd/mm/yyyy
+    """
+
+    show_validation(validation_message)
+
+    raw_task_date = input("Please enter the date for this task. Enter help for help:> ") \
+        .replace(" ", "").replace(".", "/").replace("-", "/").strip("").lower()
+    # some countries use . for the / https://en.wikipedia.org/wiki/Date_format_by_country
+
+    if raw_task_date == "help":
+        help_message = """
+    Enter dates as dd/mm/yyyy.
+    ==========================
+
+    * If you want to use the alternative format of mm/dd/yyyy write the letter M before your date as in M12/23/2016.
+
+    * If you want to use the alternative format of yyyy/mm/dd write the letter Y before the date as in Y2016/12/23.
+
+    * You may also substitute / for . or - with or without spaces
+    """
+        return get_task_date(prompt, validation_message=help_message)
+
+    if raw_task_date:
+        try:
+            if raw_task_date[0] == "m":
+                month, day, year = tuple(map(int, raw_task_date[1:].split("/")))
+            elif raw_task_date[0] == "y":
+                year, month, day = tuple(map(int, raw_task_date[1:].split("/")))
+            else:
+                day, month, year = tuple(map(int, raw_task_date.split("/")))
+
+
+            print(day, month, year)
+            return date(year, month, day)
+        except ValueError:
+            return get_task_date(prompt,
+                                 validation_message=
+                                 "Please enter the date in a know format or just press enter for today, help for help"
+                                 )
+    else:
+        return date.today()
+
+
+def gatehouse(prompt, is_time=False, validation_message ="", are_they_notes=False, is_date=False):
+    """
+
     :param prompt:
     :param is_time:
     :return:
     """
     if validation_message:
         print(validation_message)
-    try:
-        x = input(prompt).strip()
-    except KeyboardInterrupt:
-        is_it_goodbye = input("Quit program? y/N")
-        if is_it_goodbye == "y":
-            exit()
-        else:
-            return barbican(prompt, is_time, validation_message="")
+    if are_they_notes:
+        print(prompt)
+        return stdin.read()
+
     if is_time:
-        x.strip("-")  # Negative time spent doesn't make any sense unless you are the Doctor
+        raw_data = input(prompt).strip()
+        raw_data.strip("-")  # Negative time spent doesn't make any sense unless you are the Doctor
         try:
-            return int(x)
+            return int(raw_data)
         except ValueError:
-            if ":" in x:
+            if ":" in raw_data:
                 try:
-                    hours, minutes = tuple(map(int, x.split(":")))
+                    hours, minutes = tuple(map(int, raw_data.split(":")))
                     if minutes > 59:
-                        return barbican(prompt, is_time=True,
-                                        validation_message="If entering time using the hours:minutes format, minutes"
-                                                           "shouldn't be higher than 59.")
+                        return gatehouse(prompt, is_time=True,
+                                         validation_message="If entering time using the hours:minutes format, minutes"
+                                                            "shouldn't be higher than 59.")
                     else:
                         return hours * 60 + minutes
                 except ValueError:
-                    return barbican(prompt, is_time=True, validation_message="Enter time in minutes or as hours:minutes")
+                    return gatehouse(prompt, is_time=True,
+                                     validation_message="Enter time in minutes or as hours:minutes")
             else:
-                return barbican(prompt, is_time=True, validation_message="Enter time in minutes or as ours:minutes")
+                return gatehouse(prompt, is_time=True,
+                                 validation_message="Enter time in minutes or as ours:minutes")
+    elif is_date:
+        return get_task_date(prompt)
     else:
-        return x[0:STANDARD_FIELD_LENGTH]  # Avoids adding a Field size larger than the Standard Field Length
+        raw_data = input(prompt).strip()
+        return raw_data[0:STANDARD_FIELD_LENGTH]  # Avoids adding a Field size larger than the Standard Field Length
 
 
 def input_task_data():
     ugly_prompts = ["Your name:\t", "Your task name:\t",
                     'Time spent on the task:\t', "Notes, ctrl+d to finish.",
-                    "Project:"]
+                    "Project:\t", "Date Enter the date when the task was completed or hit enter for today:\t"]
 
     pretty_prompts = list(map((lambda x: term.bold(x)), ugly_prompts))
 
-    project = barbican(pretty_prompts[4])
-    name_of_user = barbican(pretty_prompts[0])
-    name_of_task = barbican(pretty_prompts[1])
-    duration_of_task = barbican(pretty_prompts[2], is_time=True)
+    project = gatehouse(pretty_prompts[4])
+    name_of_user = gatehouse(pretty_prompts[0])
+    name_of_task = gatehouse(pretty_prompts[1])
+    date = gatehouse(pretty_prompts[5], is_date=True)
+    duration_of_task = gatehouse(pretty_prompts[2], is_time=True)
+    notes = gatehouse(pretty_prompts[3], are_they_notes=True)
 
-    print(pretty_prompts[3])
-    notes = stdin.read()
-
-    return project, name_of_user, name_of_task, duration_of_task, notes
+    return project, name_of_user, name_of_task, duration_of_task, notes, date
 
 
 def add_task():
     """
 
     """
-    project, name_of_user, name_of_task, duration_of_task, notes = input_task_data()
+    project, name_of_user, name_of_task, duration_of_task, notes, date = input_task_data()
 
     Task.create(task_00_project=project, task_1_user_name=name_of_user, task_0_name=name_of_task,
-                task_3_duration=duration_of_task, task_4_notes=notes)
+                task_3_duration=duration_of_task, task_4_notes=notes, task_2_date = date)
 
 
 def initialize():
@@ -154,13 +206,14 @@ def view_entries(tasks,
             return input_choice(message="Valid choices: p,n,x")
 
     def edit_task(ti):
-        project, name_of_user, name_of_task, duration_of_task, notes = input_task_data()
+        project, name_of_user, name_of_task, duration_of_task, notes, date = input_task_data()
 
         tasks[ti].task_00_project = project
         tasks[ti].task_1_user_name = name_of_user
         tasks[ti].task_0_name = name_of_task
         tasks[ti].task_3_duration = duration_of_task
         tasks[ti].task_4_notes = notes
+        tasks[ti].task_2_date = date
 
         user_confirm = input("Confirm edit y/N").strip().lower()
         if user_confirm == "y":
@@ -215,7 +268,7 @@ def view_entries(tasks,
 
 
 def show_dates_with_tasks():
-    tasks = Task.select()
+    tasks = Task.select().order_by(Task.task_2_date)
 
     if tasks:
         def pretty_dates(x):
@@ -281,8 +334,8 @@ def search_entries_by_employee():
     tasks = Task.select().where(Task.task_1_user_name == employee)
     if tasks:
         view_entries(tasks,
-                 title="Tasks completed by {}".format(employee),
-                 fields_to_hide={"task_1_user_name"})
+                     title="Tasks completed by {}".format(employee),
+                     fields_to_hide={"task_1_user_name"})
     else:
         print("No tasks by employee: {}".format(employee))
 
@@ -296,7 +349,7 @@ def find_by_search_term():
     )
     if tasks:
         view_entries(tasks,
-                 title="Tasks that contain \"{}\"".format(search_term))
+                     title="Tasks that contain \"{}\"".format(search_term))
     else:
         print("No task meets the search term \"{}\"".format(search_term))
 
@@ -307,6 +360,7 @@ def search_by_project():
     tasks = Task.select().where(
         Task.task_00_project == project_to_search
     )
+
     if tasks:
         view_entries(tasks,
                      title="Tasks that belong to \"{}\"".format(project_to_search))
