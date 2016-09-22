@@ -14,6 +14,8 @@ by Miguel de Luis
 
 """
 
+# imports
+
 from collections import OrderedDict
 from datetime import date
 from sys import stdin, exit
@@ -21,8 +23,12 @@ from sys import stdin, exit
 from peewee import *
 from blessings import Terminal
 
+# constants
+
 DATE_FORMAT = "%d/%m/%Y"
 STANDARD_FIELD_LENGTH = 255
+
+# Global
 
 db = SqliteDatabase("work_log.db")
 
@@ -34,28 +40,34 @@ class Task(Model):
     task_1_user_name = CharField(max_length=STANDARD_FIELD_LENGTH)
     task_0_name = CharField(max_length=STANDARD_FIELD_LENGTH)
     task_3_duration = IntegerField(help_text="Time spent on the task, in minutes")
-    task_2_date = DateField(default=date.today)  # research Date Formats
+    task_2_date = DateField(default=date.today)
     task_4_notes = TextField()
-
     
     class Meta:
         database = db
 
 
 def show_validation(x):
+    """
+    Print x if there's an x to print
+    :param x: string
+    :return:
+    """
     if x:
         print(x)
 
 
-def get_task_date(prompt, validation_message=""):
+def input_task_date(prompt, help_message=""):
     """
-    Ask user for task date, validates,
-    :return: string ... dd/mm/yyyy
+    Manages the user input of task dates, allows various formats
+    :param prompt: string, a prompt for the user
+    :param help_message: a help message to display on request or when data does not validate
+    :return:
     """
 
-    show_validation(validation_message)
+    show_validation(help_message)
 
-    raw_task_date = input("Please enter the date for this task. Enter help for help:> ") \
+    raw_task_date = input(prompt) \
         .replace(" ", "").replace(".", "/").replace("-", "/").strip("").lower()
     # some countries use . for the / https://en.wikipedia.org/wiki/Date_format_by_country
 
@@ -70,7 +82,7 @@ def get_task_date(prompt, validation_message=""):
 
     * You may also substitute / for . or - with or without spaces
     """
-        return get_task_date(prompt, validation_message=help_message)
+        return input_task_date(prompt, help_message=help_message)
 
     if raw_task_date:
         try:
@@ -81,14 +93,12 @@ def get_task_date(prompt, validation_message=""):
             else:
                 day, month, year = tuple(map(int, raw_task_date.split("/")))
 
-
-            print(day, month, year)
             return date(year, month, day)
         except ValueError:
-            return get_task_date(prompt,
-                                 validation_message=
-                                 "Please enter the date in a know format or just press enter for today, help for help"
-                                 )
+            return input_task_date(prompt,
+                                   help_message=
+                                   "Please enter the date in a know format or just press enter for today, help for help"
+                                   )
     else:
         return date.today()
 
@@ -128,7 +138,7 @@ def gatehouse(prompt, is_time=False, validation_message ="", are_they_notes=Fals
                 return gatehouse(prompt, is_time=True,
                                  validation_message="Enter time in minutes or as ours:minutes")
     elif is_date:
-        return get_task_date(prompt)
+        return input_task_date(prompt)
     else:
         raw_data = input(prompt).strip()
         return raw_data[0:STANDARD_FIELD_LENGTH]  # Avoids adding a Field size larger than the Standard Field Length
@@ -137,7 +147,8 @@ def gatehouse(prompt, is_time=False, validation_message ="", are_they_notes=Fals
 def input_task_data():
     ugly_prompts = ["Your name:\t", "Your task name:\t",
                     'Time spent on the task:\t', "Notes, ctrl+d to finish.",
-                    "Project:\t", "Date Enter the date when the task was completed or hit enter for today:\t"]
+                    "Project:\t",
+                    "Date Enter the date when the task was completed or hit enter for today, help for help:\t"]
 
     pretty_prompts = list(map((lambda x: term.bold(x)), ugly_prompts))
 
@@ -394,6 +405,10 @@ def show_help():
 
 
 def view_all_entries():
+    """
+    Shows all entries, useful in development
+    :return:
+    """
     tasks_to_view = Task.select().order_by(Task.task_2_date.desc())
     if tasks_to_view:
         view_entries(tasks=tasks_to_view)
