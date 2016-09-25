@@ -2,7 +2,7 @@
 
 """
 
-Work Log Databse Script
+Work Log Database Script
 
 A simple work log script using a SQL db to implement its data model
 
@@ -42,30 +42,30 @@ class Task(Model):
     task_3_duration = IntegerField(help_text="Time spent on the task, in minutes")
     task_2_date = DateField(default=date.today)
     task_4_notes = TextField()
-    
+
     class Meta:
         database = db
 
 
-def show_validation(x):
+def show_help_message(message):
     """
     Print x if there's an x to print
-    :param x: string
-    :return:
+    :param message: string
+    :return: None
     """
-    if x:
-        print(x)
+    if message:
+        print(message)
 
 
 def input_task_date(prompt, help_message=""):
     """
-    Manages the user input of task dates, allows various formats
+    Manages the user input of task dates, allows various formats, defaults to date.today()
     :param prompt: string, a prompt for the user
     :param help_message: a help message to display on request or when data does not validate
-    :return:
+    :return: Date (not DateTime!)
     """
 
-    show_validation(help_message)
+    show_help_message(help_message)
 
     raw_task_date = input(prompt) \
         .replace(" ", "").replace(".", "/").replace("-", "/").strip("").lower()
@@ -97,54 +97,71 @@ def input_task_date(prompt, help_message=""):
         except ValueError:
             return input_task_date(prompt,
                                    help_message=
-                                   "Please enter the date in a know format or just press enter for today, help for help"
+                                   "Enter the date in an accepted format or just press enter for today, help for help"
                                    )
     else:
         return date.today()
 
 
-def gatehouse(prompt, is_time=False, validation_message ="", are_they_notes=False, is_date=False):
+def input_time_spent_on_task(prompt, help_message=""):
+    """
+    Handle time spent on task input
+    :param prompt: string
+    :param help_message: string
+    :return: int
+    """
+    show_help_message(help_message)
+    raw_data = input(prompt).strip()
+    raw_data.strip("-")  # Negative time spent doesn't make any sense unless you are the Doctor
+    try:
+        return int(raw_data)
+    except ValueError:
+        if ":" in raw_data:
+            try:
+                hours, minutes = tuple(map(int, raw_data.split(":")))
+                if minutes > 59:
+                    return input_time_spent_on_task(
+                        prompt,
+                        help_message="If entering time using the hours:minutes format, minutes"
+                                     "shouldn't be any higher than 59."
+                    )
+                else:
+                    return hours * 60 + minutes
+            except ValueError:
+                return input_time_spent_on_task(
+                    prompt,
+                    help_message="Enter time in minutes or as hours:minutes"
+                )
+        else:
+            return input_time_spent_on_task(
+                prompt,
+                help_message="Enter time in minutes or as ours:minutes"
+            )
+
+
+def input_task_notes(prompt):
+    print(prompt)
+    return stdin.read()
+
+
+def input_standard_data(prompt, help_message=""):
+    """
+    Handles user data entry for miscellaneous data fields
+    :param prompt: string
+    :param help_message: string
+    :return: string
     """
 
-    :param prompt:
-    :param is_time:
-    :return:
-    """
-    if validation_message:
-        print(validation_message)
-    if are_they_notes:
-        print(prompt)
-        return stdin.read()
-
-    if is_time:
-        raw_data = input(prompt).strip()
-        raw_data.strip("-")  # Negative time spent doesn't make any sense unless you are the Doctor
-        try:
-            return int(raw_data)
-        except ValueError:
-            if ":" in raw_data:
-                try:
-                    hours, minutes = tuple(map(int, raw_data.split(":")))
-                    if minutes > 59:
-                        return gatehouse(prompt, is_time=True,
-                                         validation_message="If entering time using the hours:minutes format, minutes"
-                                                            "shouldn't be higher than 59.")
-                    else:
-                        return hours * 60 + minutes
-                except ValueError:
-                    return gatehouse(prompt, is_time=True,
-                                     validation_message="Enter time in minutes or as hours:minutes")
-            else:
-                return gatehouse(prompt, is_time=True,
-                                 validation_message="Enter time in minutes or as ours:minutes")
-    elif is_date:
-        return input_task_date(prompt)
-    else:
-        raw_data = input(prompt).strip()
-        return raw_data[0:STANDARD_FIELD_LENGTH]  # Avoids adding a Field size larger than the Standard Field Length
+    show_help_message(help_message)
+    raw_data = input(prompt).strip()
+    return raw_data[0:STANDARD_FIELD_LENGTH]  # Avoids adding a Field size larger than the Standard Field Length
 
 
 def input_task_data():
+    """
+    Bundles task data entry and edition
+    :return: tuple, with the Task fields
+    """
     ugly_prompts = ["Your name:\t", "Your task name:\t",
                     'Time spent on the task:\t', "Notes, ctrl+d to finish.",
                     "Project:\t",
@@ -152,44 +169,66 @@ def input_task_data():
 
     pretty_prompts = list(map((lambda x: term.bold(x)), ugly_prompts))
 
-    project = gatehouse(pretty_prompts[4])
-    name_of_user = gatehouse(pretty_prompts[0])
-    name_of_task = gatehouse(pretty_prompts[1])
-    date = gatehouse(pretty_prompts[5], is_date=True)
-    duration_of_task = gatehouse(pretty_prompts[2], is_time=True)
-    notes = gatehouse(pretty_prompts[3], are_they_notes=True)
+    project = input_standard_data(pretty_prompts[4])
+    name_of_user = input_standard_data(pretty_prompts[0])
+    name_of_task = input_standard_data(pretty_prompts[1])
+    date_entered = input_task_date(pretty_prompts[5])
+    duration_of_task = input_time_spent_on_task(pretty_prompts[2])
+    notes = input_task_notes(pretty_prompts[3])
 
-    return project, name_of_user, name_of_task, duration_of_task, notes, date
+    return project, name_of_user, name_of_task, duration_of_task, notes, date_entered
 
 
 def add_task():
     """
-
+    Creates a new task, based on user input
+    :return: None
     """
     project, name_of_user, name_of_task, duration_of_task, notes, date = input_task_data()
 
     Task.create(task_00_project=project, task_1_user_name=name_of_user, task_0_name=name_of_task,
-                task_3_duration=duration_of_task, task_4_notes=notes, task_2_date = date)
+                task_3_duration=duration_of_task, task_4_notes=notes, task_2_date=date)
 
 
 def initialize():
+    """
+    Initializes database, if none
+    :return: None
+    """
     db.connect()
     db.create_tables([Task], safe=True)
 
 
-def view_entries(tasks,
-                 fields_to_hide=set([]), title="Tasks"):
+def view_entries(
+        tasks,
+        fields_to_hide=set([]),
+        title="Tasks"
+):
     """
+    Show filtered tasks, task by task, allows navigation, also acts as menu to edit and delete tasks
 
-    :return:
+    OK Ducky, First thing we call show_task_and_menu to show us the first task and a sub menu
+    That sub menu has choices for next, previous, edit, delete task and exit view entries
+    We ask the user nicely for a choice, passing around the task index
+    If the user wants to exit we pass -1
+
+
+    :param tasks: Tasks Filtered tasks
+    :param fields_to_hide: set([strings]) A set of strings referring to the task field names that we don't want to show
+    :param title: String to show as title of the filter being shown
+    :return: None
     """
-    fields = set(["task_00_project", "task_0_name", "task_1_user_name",
-                  "task_2_date", "task_4_notes", "task_3_duration"])
+    fields = {"task_00_project", "task_0_name", "task_1_user_name", "task_2_date", "task_4_notes", "task_3_duration"}
     fields_to_show = sorted(list(fields - fields_to_hide))
 
     number_of_tasks = len(tasks)
 
     def next_task(ti):
+        """
+        Returns index of the next task to show
+        :param ti: int task index
+        :return: int
+        """
         if ti < len(tasks) - 1:
             return ti + 1
         else:
@@ -197,6 +236,11 @@ def view_entries(tasks,
             return ti
 
     def previous_task(ti):
+        """
+        Returns index of the previous task to show
+        :param ti: int task index
+        :return: int
+        """
         if ti == 0:
             print("\a This is the first task")
             return ti
@@ -204,27 +248,44 @@ def view_entries(tasks,
             return ti - 1
 
     def exit_view(ti):
-        ti = -1 + ti*0
-        return ti
+        """
+        ti not used, but decided to keep it, not to complicate show_task_and_menu function
+        :param ti: int
+        :return:
+        """
+        return -1
 
-    def input_choice(message="(p)revious\t(n)ext\te(x)it"):
-        print(message)
+    def input_choice(choices, menu_prompt="(p)revious\t(n)ext\te(x)it", help_message=""):
+        """
+        Handles the sub-menu
+        :param menu_prompt: string
+        :param choices: a dictionary with the show menu choices
+        :param help_message: string
+        :return: char with the menu option
+        """
+        show_help_message(help_message)
+        print(menu_prompt)
         choice = input().lower().strip()
 
         if choice in choices.keys():
             return choice
         else:
-            return input_choice(message="Valid choices: p,n,x")
+            return input_choice(choices=choices, help_message="\aValid choices: p,n,x")
 
     def edit_task(ti):
-        project, name_of_user, name_of_task, duration_of_task, notes, date = input_task_data()
-
+        """
+        Handles task edition
+        :param ti: int
+        :return:
+        """
+        project, name_of_user, name_of_task, duration_of_task, notes, edited_date = input_task_data()
+        # edited_date avoids shadowing date
         tasks[ti].task_00_project = project
         tasks[ti].task_1_user_name = name_of_user
         tasks[ti].task_0_name = name_of_task
         tasks[ti].task_3_duration = duration_of_task
         tasks[ti].task_4_notes = notes
-        tasks[ti].task_2_date = date
+        tasks[ti].task_2_date = edited_date
 
         user_confirm = input("Confirm edit y/N").strip().lower()
         if user_confirm == "y":
@@ -235,6 +296,11 @@ def view_entries(tasks,
         return ti
 
     def delete_task(ti):
+        """
+        Handles task deletion
+        :param ti: int, task index
+        :return: int
+        """
         user_confirms = input("Please confirm you want to delete this task y/N").strip().lower()
         if user_confirms == "y":
             tasks[ti].delete_instance()
@@ -243,22 +309,38 @@ def view_entries(tasks,
         else:
             return ti
 
-    choices = {"n": next_task, "p": previous_task, "x": exit_view, "d": delete_task, "e":edit_task}
+    def show_task_and_menu(ti=0):
+        """
+        Shows a given task in the tasks lists
+        and a sub menu for the user to interact on such task
+        ask user input
+        calls the appropriate function for the menu option select
+        :param ti:
+        :return: None
+        """
 
-    def show_menu(ti=0):
+        choices = {"n": next_task, "p": previous_task, "x": exit_view, "d": delete_task, "e": edit_task}
+        # choices a dictionary with the show menu choices
 
-        show_task(task=tasks[ti], total_tasks=number_of_tasks, task_number=ti+1)
+        show_task(task=tasks[ti], total_tasks=number_of_tasks, task_number=ti + 1)
 
-        choice = choices[input_choice()]
+        choice = choices[input_choice(choices)]
 
         ti = choice(ti)
 
         if ti < 0:
             return None
         else:
-            return show_menu(ti)
+            return show_task_and_menu(ti)
 
     def show_task(task, total_tasks, task_number):
+        """
+        Shows a task nicely
+        :param task: Task
+        :param total_tasks: int
+        :param task_number: int
+        :return: None
+        """
         print_tags = dict(task_00_project="Project", task_0_name="Description",
                           task_1_user_name="User", task_2_date="Date",
                           task_3_duration="Minutes spent on task", task_4_notes="Notes:\n")
@@ -275,10 +357,14 @@ def view_entries(tasks,
                 print("{}: {}".format(term.bold(print_tags[fts]), field))
         print()
 
-    show_menu()
+    show_task_and_menu()
 
 
 def show_dates_with_tasks():
+    """
+    Shows a lists of dates that have tasks, and the number of tasks on each date
+    :return: [string] list_of_dates
+    """
     tasks = Task.select().order_by(Task.task_2_date)
 
     if tasks:
@@ -308,6 +394,11 @@ def show_dates_with_tasks():
 
 
 def search_entries_by_date():
+    """
+    Finds tasks if names or notes done in a particular date
+    Shows filtered task
+    :return: None
+    """
 
     def safe_date_choice_input(validation_message=""):
         if validation_message:
@@ -340,6 +431,11 @@ def search_entries_by_date():
 
 
 def search_entries_by_employee():
+    """
+    Finds tasks if names or notes done by a particular user
+    Shows filtered task
+    :return: None
+    """
     employee = input("Employee name:").strip()
 
     tasks = Task.select().where(Task.task_1_user_name == employee)
@@ -352,6 +448,11 @@ def search_entries_by_employee():
 
 
 def find_by_search_term():
+    """
+    Finds tasks if names or notes contains a search term provided by the user
+    Shows filtered task
+    :return: None
+    """
     search_term = input("Term to search:").strip()
 
     tasks = Task.select().where(
@@ -366,6 +467,10 @@ def find_by_search_term():
 
 
 def search_by_project():
+    """
+    Searches by project, shows filtered task calling view_entries
+    :return: None
+    """
     project_to_search = input("Project to search for:").strip()
 
     tasks = Task.select().where(
@@ -379,8 +484,13 @@ def search_by_project():
         print("No task in the project: \"{}\"".format(project_to_search))
 
 
-def search_entries():
+def search_entries(help=""):
+    """
+    Handles sub menu for different ways to search
+    :return:
+    """
 
+    show_help_message(help)
     search_menu = OrderedDict([
         ("e", [search_entries_by_employee, "search entries by employee"]),
         ("f", [find_by_search_term, "find by search term"]),
@@ -395,10 +505,14 @@ def search_entries():
     if choice in search_menu.keys():
         search_menu[choice][0]()
     else:
-        return search_entries()  # let's make a generic menu function instead
+        return search_entries(help="\aOption not in menu")
 
 
-def show_help():
+def show_main_help():
+    """
+    Shows a help message
+    :return: None
+    """
     print(term.clear)
     print("When prompted for the menu, input a to add a task, v to view entries, q to quit, h for this help")
     print("When adding the time spent on a task enter the time in minutes or in the hh:ss format ")
@@ -406,8 +520,8 @@ def show_help():
 
 def view_all_entries():
     """
-    Shows all entries, useful in development
-    :return:
+    Shows all entries, useful in development and for small entries
+    :return: None
     """
     tasks_to_view = Task.select().order_by(Task.task_2_date.desc())
     if tasks_to_view:
@@ -415,16 +529,13 @@ def view_all_entries():
     else:
         print("No tasks to show")
 
-main_menu = OrderedDict([
-    ('a', [add_task, "add task"]),
-    ('v', [view_all_entries, "view entries"]),
-    ('s', [search_entries, "search entries"]),
-    ('q', [exit, "quit script"]),
-    ('h', [show_help, "show help"])
-])
-
 
 def menu_loop(menu):
+    """
+    Main menu loop
+    :param menu: OrderedDict
+    :return: None
+    """
     print(term.clear)
     while True:
         for key, value in menu.items():
@@ -437,7 +548,19 @@ def menu_loop(menu):
 
 
 def main():
+    """
+    Main Function
+    :return: None
+    """
     initialize()
+
+    main_menu = OrderedDict([
+        ('a', [add_task, "add task"]),
+        ('v', [view_all_entries, "view entries"]),
+        ('s', [search_entries, "search entries"]),
+        ('q', [exit, "quit script"]),
+        ('h', [show_main_help, "show help"])
+    ])
 
     menu_loop(main_menu)
 
