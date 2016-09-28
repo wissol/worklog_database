@@ -19,9 +19,10 @@ by Miguel de Luis
 from collections import OrderedDict
 from datetime import date
 from sys import stdin, exit
+import logging
 
-from peewee import *
 from blessings import Terminal
+from peewee import *
 
 # constants
 
@@ -47,7 +48,7 @@ class Task(Model):
         database = db
 
 
-def show_help_message(message):
+def show_help_message(message: str) -> int:
     """
     Print x if there's an x to print
     :param message: string
@@ -55,22 +56,32 @@ def show_help_message(message):
     """
     if message:
         print(message)
+        return 1
+    else:
+        return 0
 
 
-def input_task_date(prompt, help_message=""):
+def input_task_date(prompt: str, help_message: str = "") -> date:
     """
     Manages the user input of task dates, allows various formats, defaults to date.today()
     :param prompt: string, a prompt for the user
     :param help_message: a help message to display on request or when data does not validate
     :return: Date (not DateTime!)
     """
-
     show_help_message(help_message)
+    x = input(prompt)
+    return cook_raw_date(prompt, x)
 
-    raw_task_date = input(prompt) \
-        .replace(" ", "").replace(".", "/").replace("-", "/").strip("").lower()
+
+def cook_raw_date(prompt: str, raw_task_date: str) -> date:
+    """
+    Transform the string into a date
+    :param raw_task_date:
+    :param prompt:
+    :return: Date
+    """
+    raw_task_date = raw_task_date.replace(" ", "").replace(".", "/").replace("-", "/").strip("").lower()
     # some countries use . for the / https://en.wikipedia.org/wiki/Date_format_by_country
-
     if raw_task_date == "help":
         help_message = """
     Enter dates as dd/mm/yyyy.
@@ -84,7 +95,7 @@ def input_task_date(prompt, help_message=""):
     """
         return input_task_date(prompt, help_message=help_message)
 
-    if raw_task_date:
+    elif raw_task_date:
         try:
             if raw_task_date[0] == "m":
                 month, day, year = tuple(map(int, raw_task_date[1:].split("/")))
@@ -95,12 +106,47 @@ def input_task_date(prompt, help_message=""):
 
             return date(year, month, day)
         except ValueError:
+            logging.info("Invalid raw date string caught")
             return input_task_date(prompt,
                                    help_message=
                                    "Enter the date in an accepted format or just press enter for today, help for help"
                                    )
     else:
         return date.today()
+
+
+def process_raw_time(prompt, raw_time):
+    """
+    process the raw time spent string into an int with the minutes spent on a task
+    :param prompt: str
+    :param raw_time: str
+    :return:
+    """
+    try:
+        return int(raw_time)
+    except ValueError:
+        if ":" in raw_time:
+            try:
+                hours, minutes = tuple(map(int, raw_time.split(":")))
+                if minutes > 59:
+                    return input_time_spent_on_task(
+                        prompt,
+                        help_message="If entering time using the hours:minutes format, minutes"
+                                     "shouldn't be any higher than 59."
+                    )
+                else:
+                    return hours * 60 + minutes
+            except ValueError:
+                logging.info("Invalid raw time string caught")
+                return input_time_spent_on_task(
+                    prompt,
+                    help_message="Enter time in minutes or as hours:minutes"
+                )
+        else:
+            return input_time_spent_on_task(
+                prompt,
+                help_message="Enter time in minutes or as ours:minutes"
+            )
 
 
 def input_time_spent_on_task(prompt, help_message=""):
@@ -113,33 +159,14 @@ def input_time_spent_on_task(prompt, help_message=""):
     show_help_message(help_message)
     raw_data = input(prompt).strip()
     raw_data.strip("-")  # Negative time spent doesn't make any sense unless you are the Doctor
-    try:
-        return int(raw_data)
-    except ValueError:
-        if ":" in raw_data:
-            try:
-                hours, minutes = tuple(map(int, raw_data.split(":")))
-                if minutes > 59:
-                    return input_time_spent_on_task(
-                        prompt,
-                        help_message="If entering time using the hours:minutes format, minutes"
-                                     "shouldn't be any higher than 59."
-                    )
-                else:
-                    return hours * 60 + minutes
-            except ValueError:
-                return input_time_spent_on_task(
-                    prompt,
-                    help_message="Enter time in minutes or as hours:minutes"
-                )
-        else:
-            return input_time_spent_on_task(
-                prompt,
-                help_message="Enter time in minutes or as ours:minutes"
-            )
+    return process_raw_time(prompt, raw_time=raw_data)
 
 
-def input_task_notes(prompt):
+def input_task_notes(prompt: str) -> str:
+    """
+    
+    :rtype: str
+    """
     print(prompt)
     return stdin.read()
 
@@ -184,19 +211,95 @@ def add_task():
     Creates a new task, based on user input
     :return: None
     """
-    project, name_of_user, name_of_task, duration_of_task, notes, date = input_task_data()
+    project, name_of_user, name_of_task, duration_of_task, notes, date_entered = input_task_data()
 
     Task.create(task_00_project=project, task_1_user_name=name_of_user, task_0_name=name_of_task,
-                task_3_duration=duration_of_task, task_4_notes=notes, task_2_date=date)
+                task_3_duration=duration_of_task, task_4_notes=notes, task_2_date=date_entered)
 
 
 def initialize():
     """
-    Initializes database, if none
     :return: None
     """
     db.connect()
     db.create_tables([Task], safe=True)
+
+
+def next_task(ti, tasks):
+    """
+    Returns index of the next task to show
+    :param ti: int task index
+    :return: int
+    """
+    if ti < len(tasks) - 1:
+        return ti + 1
+    else:
+        print("\a No more tasks to show")
+        return ti
+
+
+def previous_task(ti, tasks):
+    """
+    Returns index of the previous task to show
+    tasks not used, but decided to keep it, not to complicate show_task_and_menu function
+    :param ti: int task index
+    :return: int
+    """
+    if ti == 0:
+        print("\a This is the first task")
+        return ti
+    else:
+        return ti - 1
+
+
+def exit_view(ti, tasks):
+    """
+    ti and tasks not used, but decided to keep it, not to complicate show_task_and_menu function
+    :param ti: int
+    :return:
+    """
+    return -1
+
+
+def edit_task(ti, tasks):
+    """
+    Handles task edition
+    :param ti: int
+    :param tasks: [Task]
+    :return:
+    """
+    project, name_of_user, name_of_task, duration_of_task, notes, edited_date = input_task_data()
+    # edited_date avoids shadowing date
+    tasks[ti].task_00_project = project
+    tasks[ti].task_1_user_name = name_of_user
+    tasks[ti].task_0_name = name_of_task
+    tasks[ti].task_3_duration = duration_of_task
+    tasks[ti].task_4_notes = notes
+    tasks[ti].task_2_date = edited_date
+
+    user_confirm = input("Confirm edit y/N").strip().lower()
+    if user_confirm == "y":
+        tasks[ti].save()
+        print("Task edited")
+    else:
+        print("Nothing changed")
+    return ti
+
+
+def delete_task(ti, tasks):
+    """
+    Handles task deletion
+    :param ti: int, task index
+    :param tasks: [Task]
+    :return: int
+    """
+    user_confirms = input("Please confirm you want to delete this task y/N").strip().lower()
+    if user_confirms == "y":
+        tasks[ti].delete_instance()
+        print("Task {} deleted".format(tasks[ti].task_0_name))
+        return -1
+    else:
+        return ti
 
 
 def view_entries(
@@ -223,38 +326,6 @@ def view_entries(
 
     number_of_tasks = len(tasks)
 
-    def next_task(ti):
-        """
-        Returns index of the next task to show
-        :param ti: int task index
-        :return: int
-        """
-        if ti < len(tasks) - 1:
-            return ti + 1
-        else:
-            print("\a No more tasks to show")
-            return ti
-
-    def previous_task(ti):
-        """
-        Returns index of the previous task to show
-        :param ti: int task index
-        :return: int
-        """
-        if ti == 0:
-            print("\a This is the first task")
-            return ti
-        else:
-            return ti - 1
-
-    def exit_view(ti):
-        """
-        ti not used, but decided to keep it, not to complicate show_task_and_menu function
-        :param ti: int
-        :return:
-        """
-        return -1
-
     def input_choice(choices, menu_prompt="(p)revious\t(n)ext\te(x)it", help_message=""):
         """
         Handles the sub-menu
@@ -268,46 +339,10 @@ def view_entries(
         choice = input().lower().strip()
 
         if choice in choices.keys():
+            logging.info("choice in choice keys")
             return choice
         else:
             return input_choice(choices=choices, help_message="\aValid choices: p,n,x")
-
-    def edit_task(ti):
-        """
-        Handles task edition
-        :param ti: int
-        :return:
-        """
-        project, name_of_user, name_of_task, duration_of_task, notes, edited_date = input_task_data()
-        # edited_date avoids shadowing date
-        tasks[ti].task_00_project = project
-        tasks[ti].task_1_user_name = name_of_user
-        tasks[ti].task_0_name = name_of_task
-        tasks[ti].task_3_duration = duration_of_task
-        tasks[ti].task_4_notes = notes
-        tasks[ti].task_2_date = edited_date
-
-        user_confirm = input("Confirm edit y/N").strip().lower()
-        if user_confirm == "y":
-            tasks[ti].save()
-            print("Task edited")
-        else:
-            print("Nothing changed")
-        return ti
-
-    def delete_task(ti):
-        """
-        Handles task deletion
-        :param ti: int, task index
-        :return: int
-        """
-        user_confirms = input("Please confirm you want to delete this task y/N").strip().lower()
-        if user_confirms == "y":
-            tasks[ti].delete_instance()
-            print("Task {} deleted".format(tasks[ti].task_0_name))
-            return -1
-        else:
-            return ti
 
     def show_task_and_menu(ti=0):
         """
@@ -321,12 +356,15 @@ def view_entries(
 
         choices = {"n": next_task, "p": previous_task, "x": exit_view, "d": delete_task, "e": edit_task}
         # choices a dictionary with the show menu choices
-
-        show_task(task=tasks[ti], total_tasks=number_of_tasks, task_number=ti + 1)
+        try:
+            show_task(task=tasks[ti], total_tasks=number_of_tasks, task_number=ti + 1)
+        except IndexError:
+            print("You may want to add a task first")
+            return None
 
         choice = choices[input_choice(choices)]
 
-        ti = choice(ti)
+        ti = choice(ti, tasks)
 
         if ti < 0:
             return None
@@ -393,6 +431,21 @@ def show_dates_with_tasks():
         return None
 
 
+def safe_date_choice_input(list_of_dates, validation_message=""):
+    if validation_message:
+        print(term.bold_underline(validation_message))
+
+    raw_input = input("\nEnter date to look for: ")
+    try:
+        date_entered = list_of_dates[int(raw_input) - 1]
+        day, month, year = date_entered.split("/")
+        return date(int(year), int(month), int(day))
+    except IndexError:
+        return safe_date_choice_input(validation_message="That number does not correspond to any date.")
+    except ValueError:
+        return safe_date_choice_input(validation_message="Choose any of the dates using its ordinal number.")
+
+
 def search_entries_by_date():
     """
     Finds tasks if names or notes done in a particular date
@@ -400,25 +453,11 @@ def search_entries_by_date():
     :return: None
     """
 
-    def safe_date_choice_input(validation_message=""):
-        if validation_message:
-            print(term.bold_underline(validation_message))
-
-        raw_input = input("\nEnter date to look for: ")
-        try:
-            date_entered = list_of_dates[int(raw_input) - 1]
-            day, month, year = date_entered.split("/")
-            return date(int(year), int(month), int(day))
-        except IndexError:
-            return safe_date_choice_input(validation_message="That number does not correspond to any date.")
-        except ValueError:
-            return safe_date_choice_input(validation_message="Choose any of the dates using its ordinal number.")
-
     list_of_dates = show_dates_with_tasks()
 
     if list_of_dates:
 
-        date_to_search = safe_date_choice_input()
+        date_to_search = safe_date_choice_input(list_of_dates)
 
         tasks = Task.select().where(Task.task_2_date == date_to_search)
 
@@ -484,13 +523,13 @@ def search_by_project():
         print("No task in the project: \"{}\"".format(project_to_search))
 
 
-def search_entries(help=""):
+def search_entries(helpm=""):
     """
     Handles sub menu for different ways to search
     :return:
     """
 
-    show_help_message(help)
+    show_help_message(helpm)
     search_menu = OrderedDict([
         ("e", [search_entries_by_employee, "search entries by employee"]),
         ("f", [find_by_search_term, "find by search term"]),
@@ -505,7 +544,7 @@ def search_entries(help=""):
     if choice in search_menu.keys():
         search_menu[choice][0]()
     else:
-        return search_entries(help="\aOption not in menu")
+        return search_entries(helpm="\aOption not in menu")
 
 
 def show_main_help():
