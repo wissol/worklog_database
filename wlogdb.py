@@ -55,7 +55,7 @@ def show_help_message(message: str) -> int:
     :return: None
     """
     if message:
-        print(message)
+        print(term.bold_underline(message))
         return 1
     else:
         return 0
@@ -83,6 +83,7 @@ def cook_raw_date(prompt: str, raw_task_date: str) -> date:
     raw_task_date = raw_task_date.replace(" ", "").replace(".", "/").replace("-", "/").strip("").lower()
     # some countries use . for the / https://en.wikipedia.org/wiki/Date_format_by_country
     if raw_task_date == "help":
+        logging.info("help shown")
         help_message = """
     Enter dates as dd/mm/yyyy.
     ==========================
@@ -164,24 +165,26 @@ def input_time_spent_on_task(prompt, help_message=""):
 
 def input_task_notes(prompt: str) -> str:
     """
-    
+    Handles task notes input
     :rtype: str
+    :prompt: str
     """
     print(prompt)
     return stdin.read()
 
 
-def input_standard_data(prompt, help_message=""):
+def input_standard_data(prompt, help_message="", field_length=STANDARD_FIELD_LENGTH):
     """
     Handles user data entry for miscellaneous data fields
     :param prompt: string
     :param help_message: string
+    :param field_length: int
     :return: string
     """
 
     show_help_message(help_message)
     raw_data = input(prompt).strip()
-    return raw_data[0:STANDARD_FIELD_LENGTH]  # Avoids adding a Field size larger than the Standard Field Length
+    return raw_data[0:field_length]  # Avoids adding a Field size larger than the Standard Field Length
 
 
 def input_task_data():
@@ -432,8 +435,8 @@ def show_dates_with_tasks():
 
 
 def safe_date_choice_input(list_of_dates, validation_message=""):
-    if validation_message:
-        print(term.bold_underline(validation_message))
+
+    show_help_message(validation_message)
 
     raw_input = input("\nEnter date to look for: ")
     try:
@@ -441,9 +444,11 @@ def safe_date_choice_input(list_of_dates, validation_message=""):
         day, month, year = date_entered.split("/")
         return date(int(year), int(month), int(day))
     except IndexError:
-        return safe_date_choice_input(validation_message="That number does not correspond to any date.")
+        return safe_date_choice_input(list_of_dates,
+                                      validation_message="That number does not correspond to any date.")
     except ValueError:
-        return safe_date_choice_input(validation_message="Choose any of the dates using its ordinal number.")
+        return safe_date_choice_input(list_of_dates,
+                                      validation_message="Choose any of the dates using its ordinal number.")
 
 
 def search_entries_by_date():
@@ -547,28 +552,6 @@ def search_entries(helpm=""):
         return search_entries(helpm="\aOption not in menu")
 
 
-def show_main_help():
-    """
-    Shows a help message
-    :return: None
-    """
-    print(term.clear)
-    print("When prompted for the menu, input a to add a task, v to view entries, q to quit, h for this help")
-    print("When adding the time spent on a task enter the time in minutes or in the hh:ss format ")
-
-
-def view_all_entries():
-    """
-    Shows all entries, useful in development and for small entries
-    :return: None
-    """
-    tasks_to_view = Task.select().order_by(Task.task_2_date.desc())
-    if tasks_to_view:
-        view_entries(tasks=tasks_to_view)
-    else:
-        print("No tasks to show")
-
-
 def menu_loop(menu):
     """
     Main menu loop
@@ -595,10 +578,8 @@ def main():
 
     main_menu = OrderedDict([
         ('a', [add_task, "add task"]),
-        ('v', [view_all_entries, "view entries"]),
         ('s', [search_entries, "search entries"]),
         ('q', [exit, "quit script"]),
-        ('h', [show_main_help, "show help"])
     ])
 
     menu_loop(main_menu)
