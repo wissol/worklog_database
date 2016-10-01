@@ -1,8 +1,7 @@
 import unittest
 import wlogdb
-import logging
 from datetime import date
-
+from collections import OrderedDict
 
 class ShowHelpMessageTest(unittest.TestCase):
     def test_something(self):
@@ -70,9 +69,55 @@ class ShowHelpMessageTest(unittest.TestCase):
         self.assertNotEqual(process_12_67_test, 12 + 67*60)
 
     def test_input_standard_data(self):
-        input_std_data_test = wlogdb.input_standard_data("Input standard data Test, something over 5 chars",
+        input_std_data_test = wlogdb.input_standard_data("TESTING: Input standard data Test, something over 5 chars",
                                                          field_length=5)
         self.assertLessEqual(len(input_std_data_test), 5)
+
+    def test_get_filtered_tasks(self):
+        tasks_with_300_stars = wlogdb.get_filtered_tasks("*"*300)  # a 300 * string shouldn't be in the database
+        self.assertIs(len(tasks_with_300_stars), 0)
+
+    def test_get_filtered_tasks_cosa(self):
+        wlogdb.Task.create(task_00_project="project", task_1_user_name="name_of_user",
+                           task_0_name="name_of_task",task_3_duration=9999,
+                           task_4_notes="notes", task_2_date=wlogdb.date.today()
+                           )
+        tasks_with_duration9999 = wlogdb.get_filtered_tasks("project", attribute_to_filter=wlogdb.Task.task_00_project)
+        self.assertEqual(tasks_with_duration9999[0].task_3_duration, 9999)
+
+
+    def test_process_raw_time(self):
+        with self.assertLogs() as l:
+            wlogdb.process_raw_time("", "raw_time")
+            self.assertIn("INFO:root:Unrecognised time spent format", l.output)
+
+    def test_search_entries_main_menu(self):
+        with self.assertLogs():
+            # print "Search for something not in search menu like 343434 or this test will fail"
+            wlogdb.search_entries("TESTING: Search for something not in search menu like 343434 or this test will fail")
+
+    def test_safe_date_choice_input(self):
+        self.assertEqual(wlogdb.safe_date_choice_input(list_of_dates=["25/12/2016"],
+                                                       validation_message="TESTING type 1"),
+                         date(year=2016, month=12, day=25)
+                         )
+
+        with self.assertLogs() as log:
+            wlogdb.safe_date_choice_input(list_of_dates=["25/12/2016"],
+                                          validation_message="TESTING NOW type 2  <---")
+            self.assertIn("INFO:root:User entered a number not in the dates list on safe_date_choice_input",
+                          log.output)
+
+        with self.assertLogs() as log:
+            wlogdb.safe_date_choice_input(list_of_dates=["25/12/2016"],
+                                          validation_message="TESTING FINALLY type anything but a number   <---"
+                                          )
+            self.assertIn(
+                "INFO:root:User entered something other than a number in the dates list on safe_date_choice_input",
+                log.output)
+
+
+
 
 
 class BadRawTaskDate(unittest.TestCase):

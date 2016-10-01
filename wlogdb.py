@@ -35,6 +35,9 @@ db = SqliteDatabase("work_log.db")
 
 term = Terminal()
 
+logging.basicConfig(filename='log.log', level=logging.DEBUG,
+                    format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %I:%M:%S %p')
+
 
 class Task(Model):
     task_00_project = CharField(max_length=STANDARD_FIELD_LENGTH, default="In Box")
@@ -55,7 +58,7 @@ def show_help_message(message: str) -> int:
     :return: None
     """
     if message:
-        print(term.bold_underline(message))
+        print(term.bold("\a" + message))
         return 1
     else:
         return 0
@@ -144,9 +147,10 @@ def process_raw_time(prompt, raw_time):
                     help_message="Enter time in minutes or as hours:minutes"
                 )
         else:
+            logging.info("Unrecognised time spent format")
             return input_time_spent_on_task(
                 prompt,
-                help_message="Enter time in minutes or as ours:minutes"
+                help_message="Enter time in minutes or as hours:minutes"
             )
 
 
@@ -329,7 +333,8 @@ def view_entries(
 
     number_of_tasks = len(tasks)
 
-    def input_choice(choices, menu_prompt="(p)revious\t(n)ext\te(x)it", help_message=""):
+    def input_choice(choices,
+                     menu_prompt="(p)revious\t(n)ext\n(d)elete\t(e)dit\ne(x)it", help_message=""):
         """
         Handles the sub-menu
         :param menu_prompt: string
@@ -338,7 +343,8 @@ def view_entries(
         :return: char with the menu option
         """
         show_help_message(help_message)
-        print(menu_prompt)
+        print(term.bold_underline("Menu\n"))
+        print(term.bold(menu_prompt))
         choice = input().lower().strip()
 
         if choice in choices.keys():
@@ -362,6 +368,7 @@ def view_entries(
         try:
             show_task(task=tasks[ti], total_tasks=number_of_tasks, task_number=ti + 1)
         except IndexError:
+            logging.ERROR("Index Error on show_task_and_menu, perhaps no tasks on the database")
             print("You may want to add a task first")
             return None
 
@@ -401,12 +408,21 @@ def view_entries(
     show_task_and_menu()
 
 
+def get_tasks_by_date():
+    try:
+        return Task.select().order_by(Task.task_2_date)
+    except OperationalError:
+        logging.ERROR("Operational Error on get_tasks_by_date")
+        return None
+
+
 def show_dates_with_tasks():
     """
     Shows a lists of dates that have tasks, and the number of tasks on each date
     :return: [string] list_of_dates
     """
-    tasks = Task.select().order_by(Task.task_2_date)
+
+    tasks = get_tasks_by_date()
 
     if tasks:
         def pretty_dates(x):
@@ -434,8 +450,13 @@ def show_dates_with_tasks():
         return None
 
 
-def safe_date_choice_input(list_of_dates, validation_message=""):
-
+def safe_date_choice_input(list_of_dates: list, validation_message: str = "") -> date:
+    """
+    manages input to safely choose a date among those which have tasks
+    :param list_of_dates: [str]
+    :param validation_message: str
+    :return: date
+    """
     show_help_message(validation_message)
 
     raw_input = input("\nEnter date to look for: ")
@@ -444,9 +465,11 @@ def safe_date_choice_input(list_of_dates, validation_message=""):
         day, month, year = date_entered.split("/")
         return date(int(year), int(month), int(day))
     except IndexError:
+        logging.info("User entered a number not in the dates list on safe_date_choice_input")
         return safe_date_choice_input(list_of_dates,
                                       validation_message="That number does not correspond to any date.")
     except ValueError:
+        logging.info("User entered something other than a number in the dates list on safe_date_choice_input")
         return safe_date_choice_input(list_of_dates,
                                       validation_message="Choose any of the dates using its ordinal number.")
 
@@ -474,15 +497,40 @@ def search_entries_by_date():
         print("Database empty")
 
 
+def get_filtered_tasks(term_filter, attribute_to_filter=None):
+    """
+    returns list of tasks filtered according to selection
+    :param attribute_to_filter: the attribute we are searching for
+    :param term_filter: string
+    :return: [task] or None
+    """
+    try:
+        all_tasks = Task.select()
+    except OperationalError:
+        return None
+
+    try:
+        if attribute_to_filter:
+            return all_tasks.where(attribute_to_filter == term_filter)
+        else:
+            return Task.select().where(
+                (Task.task_0_name.contains(term_filter)) |
+                (Task.task_4_notes.contains(term_filter))
+            )
+    except OperationalError:
+        logging.error("The data model could be messed up or the var to filter could be invalid")
+        return None
+
+
 def search_entries_by_employee():
     """
-    Finds tasks if names or notes done by a particular user
-    Shows filtered task
+    1. Finds tasks if names or notes done by a particular user
+    2. Shows filtered task
     :return: None
     """
     employee = input("Employee name:").strip()
 
-    tasks = Task.select().where(Task.task_1_user_name == employee)
+    tasks = get_filtered_tasks(employee, Task.task_1_user_name)
     if tasks:
         view_entries(tasks,
                      title="Tasks completed by {}".format(employee),
@@ -493,16 +541,14 @@ def search_entries_by_employee():
 
 def find_by_search_term():
     """
-    Finds tasks if names or notes contains a search term provided by the user
-    Shows filtered task
+    1. Finds tasks if names or notes contains a search term provided by the user
+    2. Shows filtered task
     :return: None
     """
     search_term = input("Term to search:").strip()
 
-    tasks = Task.select().where(
-        (Task.task_0_name.contains(search_term)) |
-        (Task.task_4_notes.contains(search_term))
-    )
+    tasks = get_filtered_tasks(term_filter=search_term)
+
     if tasks:
         view_entries(tasks,
                      title="Tasks that contain \"{}\"".format(search_term))
@@ -517,24 +563,23 @@ def search_by_project():
     """
     project_to_search = input("Project to search for:").strip()
 
-    tasks = Task.select().where(
-        Task.task_00_project == project_to_search
-    )
+    tasks = get_filtered_tasks(term_filter=project_to_search, attribute_to_filter=Task.task_00_project)
 
     if tasks:
         view_entries(tasks,
                      title="Tasks that belong to \"{}\"".format(project_to_search))
     else:
         print("No task in the project: \"{}\"".format(project_to_search))
+        return None
 
 
-def search_entries(helpm=""):
+def search_entries(help_str=""):
     """
     Handles sub menu for different ways to search
     :return:
     """
-
-    show_help_message(helpm)
+    print(term.clear)
+    show_help_message(help_str)
     search_menu = OrderedDict([
         ("e", [search_entries_by_employee, "search entries by employee"]),
         ("f", [find_by_search_term, "find by search term"]),
@@ -542,14 +587,16 @@ def search_entries(helpm=""):
         ("p", [search_by_project, "find by project"])
     ])
 
-    print(term.clear)
+
     for key, value in search_menu.items():
         print("{} {} {} {}".format(term.bold, key, term.normal, value[1].title()))
     choice = input().strip().lower()
     if choice in search_menu.keys():
         search_menu[choice][0]()
     else:
-        return search_entries(helpm="\aOption not in menu")
+        logging.info("Search Entry Option not in menu")
+        return search_entries(help_str="\aOption not in menu")
+
 
 
 def menu_loop(menu):
@@ -569,23 +616,30 @@ def menu_loop(menu):
             menu[choice][0]()
 
 
+def quit_script():
+    logging.info("User chose to exit the script")
+    exit(0)
+
+
 def main():
     """
     Main Function
     :return: None
     """
+
     initialize()
 
     main_menu = OrderedDict([
         ('a', [add_task, "add task"]),
         ('s', [search_entries, "search entries"]),
-        ('q', [exit, "quit script"]),
+        ('q', [quit_script, "quit script"]),
     ])
 
     menu_loop(main_menu)
 
 
 if __name__ == '__main__':
+    logging.info("Script begins to run")
     main()
 else:
     pass
