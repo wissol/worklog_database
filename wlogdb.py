@@ -16,10 +16,10 @@ by Miguel de Luis
 
 # imports
 
+import logging
 from collections import OrderedDict
 from datetime import date
 from sys import stdin, exit
-import logging
 
 from blessings import Terminal
 from peewee import *
@@ -29,14 +29,16 @@ from peewee import *
 DATE_FORMAT = "%d/%m/%Y"
 STANDARD_FIELD_LENGTH = 255
 
-# Global
-
-db = SqliteDatabase("work_log.db")
+# Globals
 
 term = Terminal()
 
 logging.basicConfig(filename='log.log', level=logging.DEBUG,
                     format='%(asctime)s %(message)s', datefmt='%d/%m/%Y %I:%M:%S %p')
+
+db = SqliteDatabase("work_log.db")
+
+# Classes
 
 
 class Task(Model):
@@ -49,6 +51,8 @@ class Task(Model):
 
     class Meta:
         database = db
+
+# Helper Functions
 
 
 def show_help_message(message: str) -> int:
@@ -96,6 +100,8 @@ def cook_raw_date(prompt: str, raw_task_date: str) -> date:
     * If you want to use the alternative format of yyyy/mm/dd write the letter Y before the date as in Y2016/12/23.
 
     * You may also substitute / for . or - with or without spaces
+
+    * A two digit year is also acceptable; 12/12/12 meaning 12th of December of 2012
     """
         return input_task_date(prompt, help_message=help_message)
 
@@ -108,7 +114,26 @@ def cook_raw_date(prompt: str, raw_task_date: str) -> date:
             else:
                 day, month, year = tuple(map(int, raw_task_date.split("/")))
 
-            return date(year, month, day)
+            if year < 2000:
+                if year < 100:
+                    year += 2000
+                else:
+                    logging.info("Invalid raw date string caught")
+                    return input_task_date(prompt,
+                                           help_message=
+                                           "Enter the year as 4 or 2 digits or press enter for today, help for help"
+                                           )
+            date_to_return = date(year, month, day)
+
+            if date_to_return > date.today():
+                logging.info("Future date")
+                return input_task_date(prompt,
+                                       help_message=
+                                       "That date is in the future. Do you own a TARDIS?"
+                                       )
+            else:
+                return date_to_return
+
         except ValueError:
             logging.info("Invalid raw date string caught")
             return input_task_date(prompt,
@@ -119,12 +144,12 @@ def cook_raw_date(prompt: str, raw_task_date: str) -> date:
         return date.today()
 
 
-def process_raw_time(prompt, raw_time):
+def process_raw_time(prompt: str, raw_time: str) -> int:
     """
     process the raw time spent string into an int with the minutes spent on a task
-    :param prompt: str
+    :param prompt: str, hopefully expressed in digits or as hours:minutes
     :param raw_time: str
-    :return:
+    :return: int time spent
     """
     try:
         return int(raw_time)
@@ -154,12 +179,12 @@ def process_raw_time(prompt, raw_time):
             )
 
 
-def input_time_spent_on_task(prompt, help_message=""):
+def input_time_spent_on_task(prompt: str, help_message: str = "") -> object:
     """
     Handle time spent on task input
     :param prompt: string
     :param help_message: string
-    :return: int
+    :return: int (by way of calling process_raw_time)
     """
     show_help_message(help_message)
     raw_data = input(prompt).strip()
@@ -177,7 +202,7 @@ def input_task_notes(prompt: str) -> str:
     return stdin.read()
 
 
-def input_standard_data(prompt, help_message="", field_length=STANDARD_FIELD_LENGTH):
+def input_standard_data(prompt: str, help_message: str="", field_length: int=STANDARD_FIELD_LENGTH):
     """
     Handles user data entry for miscellaneous data fields
     :param prompt: string
@@ -265,7 +290,7 @@ def exit_view(ti, tasks):
     :param ti: int
     :return:
     """
-    return -1
+    return -2
 
 
 def edit_task(ti, tasks):
@@ -303,7 +328,8 @@ def delete_task(ti, tasks):
     user_confirms = input("Please confirm you want to delete this task y/N").strip().lower()
     if user_confirms == "y":
         tasks[ti].delete_instance()
-        print("Task {} deleted".format(tasks[ti].task_0_name))
+        logging.info("Task {} deleted".format(tasks[ti].task_0_name))
+
         return -1
     else:
         return ti
@@ -330,8 +356,6 @@ def view_entries(
     """
     fields = {"task_00_project", "task_0_name", "task_1_user_name", "task_2_date", "task_4_notes", "task_3_duration"}
     fields_to_show = sorted(list(fields - fields_to_hide))
-
-    number_of_tasks = len(tasks)
 
     def input_choice(choices,
                      menu_prompt="(p)revious\t(n)ext\n(d)elete\t(e)dit\ne(x)it", help_message=""):
@@ -366,7 +390,7 @@ def view_entries(
         choices = {"n": next_task, "p": previous_task, "x": exit_view, "d": delete_task, "e": edit_task}
         # choices a dictionary with the show menu choices
         try:
-            show_task(task=tasks[ti], total_tasks=number_of_tasks, task_number=ti + 1)
+            show_task(task=tasks[ti], total_tasks=len(tasks), task_number=ti + 1)
         except IndexError:
             logging.ERROR("Index Error on show_task_and_menu, perhaps no tasks on the database")
             print("You may want to add a task first")
@@ -587,7 +611,6 @@ def search_entries(help_str=""):
         ("p", [search_by_project, "find by project"])
     ])
 
-
     for key, value in search_menu.items():
         print("{} {} {} {}".format(term.bold, key, term.normal, value[1].title()))
     choice = input().strip().lower()
@@ -598,15 +621,15 @@ def search_entries(help_str=""):
         return search_entries(help_str="\aOption not in menu")
 
 
-
 def menu_loop(menu):
     """
     Main menu loop
     :param menu: OrderedDict
     :return: None
     """
-    print(term.clear)
+
     while True:
+        print(term.clear)
         for key, value in menu.items():
             print("{} {} {} {}".format(term.bold, key, term.normal, value[1].title()))
 
